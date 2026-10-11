@@ -24,5 +24,9 @@ elsewhere (e.g. the AUR `plexamp-beta-appimage` package), then bump `version` in
 nix store prefetch-file https://plexamp.plex.tv/desktop/Plexamp-<version>-x86_64.AppImage
 ```
 
+The bundled GTK hook forces `GDK_BACKEND=x11`; this package patches it to
+default to `wayland` (fractional `GDK_SCALE` is truncated under XWayland, so the
+UI rendered too small). Set `GDK_BACKEND=x11` to override.
+
 If the window renders blank/black on NVIDIA, wrap with
 `WEBKIT_DISABLE_DMABUF_RENDERER=1` (not needed as of 4.50.19).
