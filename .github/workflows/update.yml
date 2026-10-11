@@ -1,0 +1,90 @@
+name: Update Plexamp
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: update-plexamp
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      updated: ${{ steps.update.outputs.updated }}
+      current: ${{ steps.update.outputs.current }}
+      latest: ${{ steps.update.outputs.latest }}
+      branch: update/plexamp-${{ steps.update.outputs.latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check feed and update sources.json
+        id: update
+        run: nix shell nixpkgs#jq nixpkgs#minisign -c scripts/update.sh
+
+      # Stage the update on a branch; main only moves once every platform builds.
+      - name: Push update branch
+        if: steps.update.outputs.updated == 'true'
+        env:
+          BRANCH: update/plexamp-${{ steps.update.outputs.latest }}
+          CURRENT: ${{ steps.update.outputs.current }}
+          LATEST: ${{ steps.update.outputs.latest }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -am "plexamp: $CURRENT -> $LATEST"
+          git push --force origin "$BRANCH"
+
+  build:
+    needs: check
+    if: needs.check.outputs.updated == 'true'
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.check.outputs.branch }}
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        run: nix build .#plexamp --print-build-logs
+
+      - name: Verify package contents
+        run: |
+          test -x result/bin/plexamp
+          grep -qx 'Exec=plexamp %U' result/share/applications/plexamp.desktop
+
+  merge:
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.check.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Fast-forward main
+        env:
+          BRANCH: ${{ needs.check.outputs.branch }}
+        run: |
+          git push origin "HEAD:main"
+          git push origin --delete "$BRANCH"
+
+      - name: Summary
+        run: echo "Updated plexamp ${{ needs.check.outputs.current }} → ${{ needs.check.outputs.latest }}" >>"$GITHUB_STEP_SUMMARY"

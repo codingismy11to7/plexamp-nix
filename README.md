@@ -16,13 +16,21 @@ Unfree; consumers using the overlay need `allowUnfree`.
 
 ## Updating
 
-The electron-updater feed (`latest-linux.yml`) is stale, so find the version
-elsewhere (e.g. the AUR `plexamp-beta-appimage` package), then bump `version` in
-`package.nix` and refresh the hash:
+Plexamp's Tauri updater feed is `https://plexamp.plex.tv/desktop/tauri-update.json`
+(the old electron-updater `latest-linux.yml` is stale). `scripts/update.sh`
+reads it, verifies each AppImage against the feed's minisign signature using the
+public key embedded in the Plexamp binary (`scripts/plexamp.pub`), and writes the
+new version and hashes to `sources.json`:
 
 ```sh
-nix store prefetch-file https://plexamp.plex.tv/desktop/Plexamp-<version>-x86_64.AppImage
+nix shell nixpkgs#jq nixpkgs#minisign -c scripts/update.sh
 ```
+
+The `Update Plexamp` workflow runs it every 6 hours. A new release is committed to
+an `update/plexamp-<version>` branch, built on x86_64 and aarch64 runners, and
+fast-forwarded onto `main` only if both builds pass.
+
+## Notes
 
 The bundled GTK hook forces `GDK_BACKEND=x11`; this package patches it to
 default to `wayland` (fractional `GDK_SCALE` is truncated under XWayland, so the

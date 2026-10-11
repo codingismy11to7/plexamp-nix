@@ -3,15 +3,27 @@
   appimageTools,
   fetchurl,
   runCommand,
+  stdenv,
 }:
 let
   pname = "plexamp";
-  version = "4.50.19";
+
+  # Maintained by scripts/update.sh from Plexamp's Tauri update feed.
+  sources = lib.importJSON ./sources.json;
+  inherit (sources) version;
+
+  inherit (stdenv.hostPlatform) system;
+  arch =
+    {
+      x86_64-linux = "x86_64";
+      aarch64-linux = "aarch64";
+    }
+    .${system} or (throw "plexamp: unsupported system ${system}");
 
   src = fetchurl {
-    url = "https://plexamp.plex.tv/desktop/Plexamp-${version}-x86_64.AppImage";
-    name = "Plexamp-${version}-x86_64.AppImage";
-    hash = "sha256-UgMaHzGb4oR2Wpnbp0yyp/YkSRFb0hnKW5pMFCMou6o=";
+    url = "https://plexamp.plex.tv/desktop/Plexamp-${version}-${arch}.AppImage";
+    name = "Plexamp-${version}-${arch}.AppImage";
+    hash = sources.hashes.${system};
   };
 
   # The AppImage's linuxdeploy GTK hook unconditionally forces GDK_BACKEND=x11
@@ -21,7 +33,7 @@ let
   # If the window ever renders blank/black on NVIDIA, try
   # WEBKIT_DISABLE_DMABUF_RENDERER=1 (not needed on 4.50.19 in testing).
   appimageContents = runCommand "${pname}-${version}-patched" { } ''
-    cp -r ${appimageTools.extractType2 { inherit pname version src; }} $out
+    cp -r ${appimageTools.extract { inherit pname version src; }} $out
     chmod -R u+w $out
     substituteInPlace $out/apprun-hooks/linuxdeploy-plugin-gtk.sh \
       --replace-fail 'export GDK_BACKEND=x11' ': "''${GDK_BACKEND:=wayland}"; export GDK_BACKEND #'
@@ -44,7 +56,7 @@ appimageTools.wrapAppImage {
     homepage = "https://plexamp.com/";
     license = lib.licenses.unfree;
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
-    platforms = [ "x86_64-linux" ];
+    platforms = builtins.attrNames sources.hashes;
     mainProgram = pname;
   };
 }

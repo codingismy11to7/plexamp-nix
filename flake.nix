@@ -6,22 +6,28 @@
   outputs =
     { self, nixpkgs }:
     let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs {
-        inherit system;
-        config.allowUnfree = true;
-      };
+      forAllSystems =
+        f:
+        nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (
+          system:
+          f (
+            import nixpkgs {
+              inherit system;
+              config.allowUnfree = true;
+            }
+          )
+        );
     in
     {
-      packages.${system} = {
+      packages = forAllSystems (pkgs: {
         plexamp = pkgs.callPackage ./package.nix { };
-        default = self.packages.${system}.plexamp;
-      };
+        default = self.packages.${pkgs.stdenv.hostPlatform.system}.plexamp;
+      });
 
       overlays.default = final: _prev: {
         plexamp = final.callPackage ./package.nix { };
       };
 
-      formatter.${system} = pkgs.nixfmt;
+      formatter = forAllSystems (pkgs: pkgs.nixfmt);
     };
 }
