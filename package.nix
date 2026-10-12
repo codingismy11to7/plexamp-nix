@@ -32,16 +32,25 @@ let
   # native Wayland instead while still honoring an explicit GDK_BACKEND.
   # If the window ever renders blank/black on NVIDIA, try
   # WEBKIT_DISABLE_DMABUF_RENDERER=1 (not needed on 4.50.19 in testing).
+  #
+  # The AppImage also bundles Ubuntu's libwayland-*, which shadows the host's.
+  # The host mesa's libEGL_mesa needs a newer libwayland-client
+  # (wl_fixes_interface), fails to load, and WebKit aborts with "Could not
+  # create default EGL display: EGL_BAD_PARAMETER" on Intel/AMD. NVIDIA's EGL
+  # doesn't need it, so it only shows up on mesa. Drop them and use nixpkgs'.
   appimageContents = runCommand "${pname}-${version}-patched" { } ''
     cp -r ${appimageTools.extract { inherit pname version src; }} $out
     chmod -R u+w $out
     substituteInPlace $out/apprun-hooks/linuxdeploy-plugin-gtk.sh \
       --replace-fail 'export GDK_BACKEND=x11' ': "''${GDK_BACKEND:=wayland}"; export GDK_BACKEND #'
+    rm $out/usr/lib/libwayland-*.so*
   '';
 in
 appimageTools.wrapAppImage {
   inherit pname version;
   src = appimageContents;
+
+  extraPkgs = pkgs: [ pkgs.wayland ];
 
   extraInstallCommands = ''
     install -Dm444 ${appimageContents}/Plexamp.desktop $out/share/applications/plexamp.desktop
